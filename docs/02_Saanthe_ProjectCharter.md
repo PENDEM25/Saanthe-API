@@ -92,6 +92,7 @@ The MVP is intentionally **small and vertical** — meaning it should cover the 
 - **Platform-wide admin/superuser role** (someone who can view all vendors' data, all customers, and global stats across the whole platform) — each vendor profile sees only its own data for MVP; a superuser role is a reasonable v1.x addition, not needed to prove out the core model
 - Horizontal scaling, caching, queues, containers, cloud deployment (these come in v1.0+ per your roadmap)
 - **Crowdsourced/peer-to-peer delivery matching** (a courier delivers a product from seller to buyer along their existing route, for a fee) — a validated real-world concept (see: Roadie, DoorDash's enterprise delivery arm), but deliberately deferred. This is a distinct engineering discipline (geospatial/real-time route-matching, constraint optimization) and a distinct business-viability question (two-sided marketplace liquidity in a given radius) — both would require their own separate Phase 1 discovery process before design, not a bolt-on to Saanthe's MVP.
+- **Shopping cart** (persistent, pre-checkout item accumulation) — MVP goes directly from browsing to order creation (User Story US-6), with no intermediate cart entity. Deferred deliberately as a dedicated, standalone learning exercise once the core order/payment flow is solid — introducing a `cart_items` entity (or a client-side-only cart) is a meaningful design decision in its own right, not a trivial addition.
 
 Keeping these explicitly *out* is as important as defining what's *in* — this is a real skill: scope control.
 
