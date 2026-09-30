@@ -101,7 +101,209 @@ This document is updated immediately after each endpoint is built, while the rea
 
 ---
 
-## Template for Future Entries
+## ✅ `POST /auth/login`
+
+**Purpose:** Authenticate an existing user and issue a JWT access token (User Story US-2). Introduces JWT for the first time.
+
+```
+1. Client sends: POST /auth/login
+   Body: {"email": "...", "password": "..."}
+        ↓
+2. main.py has already registered auth.router to handle /auth/login
+        ↓
+3. ROUTER (app/routers/auth.py)
+   - FastAPI auto-validates the body against UserLoginRequest (Schema)
+   - Gets a database session via Depends(get_db)
+   - Calls: user_service.login_user(db, email, password)
+        ↓
+4. SERVICE (app/services/user_service.py)
+   - Calls user_repository.get_user_by_email(db, email)
+   - Checks: does a user exist AND does verify_password(password, user.password_hash) succeed?
+   - Deliberately uses ONE generic check for both "no such email" and "wrong password" —
+     never reveals which one failed, preventing attackers from discovering valid emails
+   - IF either fails → raises InvalidCredentialsError
+   - IF both succeed → calls create_access_token(user.id), returns the signed JWT string
+        ↓
+5. REPOSITORY — only a read (get_user_by_email), no write involved this time
+        ↓
+6. SERVICE returns the raw token string back to the Router
+        ↓
+7. ROUTER wraps it in TokenResponse(access_token=token)
+   - Returns HTTP 200 with {"access_token": "...", "token_type": "bearer"}
+        ↓
+8. Client receives the token, to be sent on all future authenticated requests
+   (via an Authorization: Bearer <token> header — not yet built, needed for protected endpoints)
+
+   ALTERNATE PATH — invalid credentials:
+   Step 4 raises InvalidCredentialsError
+        ↓
+   ROUTER catches it: except user_service.InvalidCredentialsError as e:
+   Raises HTTPException(status_code=401, detail=str(e))
+```
+
+**Key design notes:**
+- **JWT structure proven directly:** decoded a real token's payload manually using Base64 — confirmed the payload (`sub`, `exp`) is plainly readable, NOT encrypted. Security comes entirely from the signature (third segment), which can't be forged without the server's `SECRET_KEY`.
+- **Generic error message is a deliberate security choice** — same email-enumeration protection discussed in the original Security Design doc, now actually implemented.
+- **`SECRET_KEY` is currently hardcoded** in `security.py` as a placeholder — flagged as needing to move to an environment variable before any real deployment (see Future Learning List).
+- **Still missing, for later:** an actual dependency that reads the `Authorization` header, verifies the token, and identifies "who is making this request" — needed before building any endpoint that requires being logged in (e.g., `GET /users/me`, creating an order).
+- Small bug caught mid-build: `pip install python-jose[cryptography]` failed under `zsh` due to unquoted square brackets being interpreted as a glob pattern — fixed by quoting: `pip install "python-jose[cryptography]"`.
+
+---
+
+## ✅ `GET /users/me`
+
+**Purpose:** Return the logged-in user's own profile. First genuinely protected endpoint — proves the full JWT verification chain works.
+
+```
+1. Client sends: GET /users/me
+   Header: Authorization: Bearer <token>
+        ↓
+2. ROUTER (app/routers/auth.py)
+   - current_user: User = Depends(get_current_user)
+   - FastAPI runs get_current_user BEFORE this function's body executes
+        ↓
+3. DEPENDENCY (app/core/dependencies.py — get_current_user)
+   - OAuth2PasswordBearer automatically extracts the token from the Authorization header
+   - Calls decode_access_token(token) → verifies signature + expiry, extracts user_id
+   - IF invalid/expired → raises HTTPException(401) immediately, function body never runs
+   - Calls user_repository.get_user_by_id(db, user_id)
+   - IF no such user → raises HTTPException(401)
+   - Returns the real User object
+        ↓
+4. ROUTER receives the User object as current_user, simply returns it
+        ↓
+5. Formatted via response_model=UserResponse (password_hash excluded, as always)
+        ↓
+6. Client receives: {"id": 5, "name": "Manoj", "email": "manoj@email.com"}
+
+   ALTERNATE PATH — no/invalid token:
+   Dependency raises HTTPException(401) before the route function ever runs
+        ↓
+   Client receives: 401, with an error detail
+```
+
+**Key design notes:**
+- **`Depends(get_current_user)` is now a reusable building block** — every future endpoint requiring login (creating an order, viewing own orders, vendor profile management) will use this exact same pattern.
+- **Tested both paths directly:** confirmed `401` with no token, confirmed correct profile returned with a valid token.
+- Distinguishing insight confirmed during this build: `GET /products` remains public and untouched — protecting one endpoint does NOT retroactively protect others. Each endpoint's auth requirement is a deliberate, individual design choice.
+
+---
+
+## ✅ `GET /health`
+
+**Purpose:** Report whether the application and its database connection are alive. A production/infrastructure pattern, not a business-logic endpoint.
+
+```
+1. Client sends: GET /health
+        ↓
+2. main.py has already registered health.router to handle /health
+        ↓
+3. ROUTER (app/routers/health.py) — deliberately skips Service AND Repository
+   - Gets a database session via Depends(get_db) — same shared dependency as every other endpoint
+   - Runs db.execute(text("SELECT 1")) directly — a throwaway query touching no real table
+   - If it succeeds → returns {"status": "ok"}
+   - If the database is unreachable → the execute() call itself throws, FastAPI auto-returns 500
+        ↓
+4. Client receives: {"status": "ok"}  (or a 500 if something is genuinely broken)
+```
+
+**Key design notes:**
+- **Deliberately breaks the usual layering** — no Schema, no Service, no Repository. There's no business logic or specific table involved, so routing through those layers would add complexity with zero benefit. A legitimate, intentional exception, not a shortcut taken out of laziness.
+- **Real-world purpose:** this is the endpoint automated infrastructure (load balancers, monitoring/alerting tools) would repeatedly call, in production, to detect outages automatically — the actual alerting/notification system itself is separate infrastructure, not something built here.
+- Cheapest endpoint built so far — proof that the architecture allows shortcuts *when justified*, without breaking the overall pattern for everything else.
+
+---
+
+## ✅ `POST /vendor/profile`
+
+**Purpose:** Let any logged-in user create a Vendor Profile, unlocking selling capability on the same account (User Story US-10). First endpoint to combine authentication with a write action, and the first real implementation of the single-identity model (Option B).
+
+```
+1. Client sends: POST /vendor/profile
+   Header: Authorization: Bearer <token>
+   Body: {"business_name": "..."} (optional field)
+        ↓
+2. ROUTER (app/routers/vendor.py)
+   - current_user: User = Depends(get_current_user) — resolves and verifies identity first
+   - FastAPI validates body against VendorProfileRequest
+   - Calls: vendor_service.create_vendor_profile(db, current_user.id, request.business_name)
+   - Critically: the user_id passed is ALWAYS current_user.id (from the verified token),
+     NEVER anything the client could supply in the request body — prevents creating a
+     profile on someone else's behalf
+        ↓
+3. SERVICE (app/services/vendor_service.py)
+   - Calls vendor_repository.get_vendor_profile_by_user_id(db, user_id) — duplicate check
+   - IF one exists → raises VendorProfileAlreadyExistsError, stops immediately
+   - IF none exists → calls vendor_repository.create_vendor_profile(db, user_id, business_name)
+        ↓
+4. REPOSITORY (app/repositories/vendor_repository.py)
+   - Creates a new VendorProfile object, db.add() / db.commit() / db.refresh()
+   - Returns the saved object
+        ↓
+5. Formatted via response_model=VendorProfileResponse
+   - Returns HTTP 201 Created
+
+   ALTERNATE PATH — profile already exists:
+   Service raises VendorProfileAlreadyExistsError
+        ↓
+   ROUTER catches it, raises HTTPException(status_code=409, detail=str(e))
+```
+
+**Key design notes:**
+- **Application-level duplicate check backs up the database's own UNIQUE constraint** (on `vendor_profiles.user_id`) — same reasoning as `EmailAlreadyExistsError`: catching it here gives a clean `409` instead of a raw database `IntegrityError` bubbling up.
+- **Identity never comes from client input** — `current_user.id` is the only source of truth for who owns the new profile, a deliberate security pattern worth remembering for every future "create something owned by me" endpoint (creating products, placing orders).
+- **Tested both paths directly:** first creation succeeded (`201`, correct `user_id`), second attempt correctly rejected (`409`, "You already have a vendor profile").
+
+---
+
+## 🔒 Firm Requirement for `POST /orders` (Not Yet Built)
+
+
+
+Order creation MUST be wrapped in a single atomic database transaction. Creating the `order` row, creating the `order_item` rows, and decrementing `products.stock_quantity` must either **all succeed together, or all be rolled back together** — never left partially applied.
+
+**Why this matters, concretely:** without atomicity, a mid-request failure (e.g., discovering insufficient stock on the second item in a multi-item order, or a server crash) could leave a real order in the database with missing items, or stock decremented for an order that was never actually valid — a silent data-integrity bug.
+
+**Expected implementation shape (SQLAlchemy):**
+```python
+try:
+    order = Order(...)
+    db.add(order)
+    db.flush()  # get order.id without committing yet
+
+    for item in items:
+        product = db.query(Product).filter(Product.id == item.product_id).first()
+        if product.stock_quantity < item.quantity:
+            raise InsufficientStockError(...)
+        product.stock_quantity -= item.quantity
+        db.add(OrderItem(order_id=order.id, product_id=product.id, ...))
+
+    db.commit()
+except Exception:
+    db.rollback()
+    raise
+```
+
+This same atomicity requirement also applies later to `POST /orders/{id}/pay` (payment success + order status update must be atomic — already flagged conceptually in the Technical Design Doc's Security section).
+
+**Additional firm requirement — race condition protection:** the stock check inside this same transaction must use row-level locking (`.with_for_update()` in SQLAlchemy) when reading a product's `stock_quantity`, to prevent two concurrent orders from both reading stale stock and both succeeding when only one item remains. This is not a separate feature — it's a refinement of the same stock-check line already required above.
+
+---
+
+## 🔒 Firm Requirement for `POST /orders/{id}/pay` (Not Yet Built)
+
+**Idempotency requirement:** before processing a payment attempt, check whether a `SUCCESS` payment already exists for that order. If one does, return that existing result rather than processing a new charge. This directly implements Business Rule #9 ("a payment cannot be processed twice") and protects against duplicate charges caused by client-side retries (e.g., a timed-out request that the frontend automatically resends).
+
+```python
+existing = db.query(Payment).filter(
+    Payment.order_id == order_id, Payment.status == "SUCCESS"
+).first()
+if existing:
+    return existing  # don't process again
+```
+
+---
+
 
 ```
 ## [status] `METHOD /path`
