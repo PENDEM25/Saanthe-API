@@ -3,6 +3,9 @@ from sqlalchemy.orm import Session
 from app.database.connection import get_db
 from app.services import user_service
 from app.schemas.user import UserRegisterRequest, UserResponse, UserLoginRequest, TokenResponse
+from app.core.dependencies import get_current_user
+from app.models.user import User
+
 
 router = APIRouter()
 
@@ -25,3 +28,9 @@ def login(request: UserLoginRequest, db: Session = Depends(get_db)):
         return TokenResponse(access_token=token)
     except user_service.InvalidCredentialsError as e:
         raise HTTPException(status_code=401, detail=str(e))
+
+
+@router.get("/users/me", response_model=UserResponse)
+def get_my_profile(current_user: User = Depends(get_current_user)):
+    return current_user
+
