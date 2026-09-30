@@ -1,0 +1,67 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="Saanthe Architecture" id="saanthe-arch-1">
+    <mxGraphModel dx="800" dy="600" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="960" pageHeight="400" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Main pipeline (blue) -->
+        <mxCell id="2" value="Client&#10;sends requests" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DCEBFB;strokeColor=#3B82C4;fontSize=13;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="30" y="60" width="140" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="3" value="Router&#10;routes &amp; validates (incl. /health)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DCEBFB;strokeColor=#3B82C4;fontSize=13;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="210" y="60" width="140" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="4" value="Service&#10;business logic" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DCEBFB;strokeColor=#3B82C4;fontSize=13;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="390" y="60" width="140" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="5" value="Repository&#10;runs queries" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DCEBFB;strokeColor=#3B82C4;fontSize=13;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="570" y="60" width="160" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="6" value="Database&#10;stores data" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DCEBFB;strokeColor=#3B82C4;fontSize=13;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="770" y="60" width="140" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Support layers (teal) -->
+        <mxCell id="7" value="Schemas&#10;API shape (Pydantic)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D6F0E8;strokeColor=#1D9E75;fontSize=13;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="210" y="220" width="140" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="8" value="Core&#10;hashing + JWT" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D6F0E8;strokeColor=#1D9E75;fontSize=13;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="390" y="220" width="140" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="9" value="Models&#10;table shape (ORM)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D6F0E8;strokeColor=#1D9E75;fontSize=13;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="570" y="220" width="160" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Main flow arrows (solid) -->
+        <mxCell id="10" style="html=1;endArrow=block;rounded=0;strokeColor=#555555;strokeWidth=1.5;" edge="1" parent="1" source="2" target="3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="11" style="html=1;endArrow=block;rounded=0;strokeColor=#555555;strokeWidth=1.5;" edge="1" parent="1" source="3" target="4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="12" style="html=1;endArrow=block;rounded=0;strokeColor=#555555;strokeWidth=1.5;" edge="1" parent="1" source="4" target="5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="13" style="html=1;endArrow=block;rounded=0;strokeColor=#555555;strokeWidth=1.5;" edge="1" parent="1" source="5" target="6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Support connectors (dashed, teal) -->
+        <mxCell id="14" value="validates" style="html=1;endArrow=block;dashed=1;strokeColor=#1D9E75;fontSize=10;fontColor=#1D9E75;" edge="1" parent="1" source="7" target="3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="15" value="auth check" style="html=1;endArrow=block;dashed=1;strokeColor=#1D9E75;fontSize=10;fontColor=#1D9E75;" edge="1" parent="1" source="8" target="3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="16" value="hashing" style="html=1;endArrow=block;dashed=1;strokeColor=#1D9E75;fontSize=10;fontColor=#1D9E75;" edge="1" parent="1" source="8" target="4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="17" value="defines shape" style="html=1;endArrow=block;dashed=1;strokeColor=#1D9E75;fontSize=10;fontColor=#1D9E75;" edge="1" parent="1" source="9" target="5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
