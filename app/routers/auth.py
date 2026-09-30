@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database.connection import get_db
 from app.services import user_service
-from app.schemas.user import UserRegisterRequest, UserResponse
+from app.schemas.user import UserRegisterRequest, UserResponse, UserLoginRequest, TokenResponse
 
 router = APIRouter()
 
@@ -16,3 +16,12 @@ def register(request: UserRegisterRequest, db: Session = Depends(get_db)):
         return new_user
     except user_service.EmailAlreadyExistsError as e:
         raise HTTPException(status_code=409, detail=str(e))
+
+
+@router.post("/auth/login", response_model=TokenResponse)
+def login(request: UserLoginRequest, db: Session = Depends(get_db)):
+    try:
+        token = user_service.login_user(db, request.email, request.password)
+        return TokenResponse(access_token=token)
+    except user_service.InvalidCredentialsError as e:
+        raise HTTPException(status_code=401, detail=str(e))
