@@ -40,3 +40,42 @@ def create_order(db: Session, buyer_user_id: int, items: list):
         db.rollback()
         raise
 
+class OrderNotFoundError(Exception):
+    pass
+
+
+class OrderNotOwnedError(Exception):
+    pass
+
+
+class OrderNotCancellableError(Exception):
+    pass
+
+
+def cancel_order(db: Session, order_id: int, user_id: int):
+    order = order_repository.get_order_by_id(db, order_id)
+    if not order:
+        raise OrderNotFoundError(f"Order {order_id} not found")
+    if order.buyer_user_id != user_id:
+        raise OrderNotOwnedError("This order does not belong to you")
+    if order.status != "PENDING":
+        raise OrderNotCancellableError(f"Order is '{order.status}', cannot be cancelled")
+
+    try:
+        items = order_repository.get_order_items(db, order_id)
+        for item in items:
+            order_repository.restore_product_stock(db, item.product_id, item.quantity)
+
+        order_repository.update_order_status(db, order, "CANCELLED")
+
+        db.commit()
+        db.refresh(order)
+        return order
+
+    except Exception:
+        db.rollback()
+        raise
+
+
+
+

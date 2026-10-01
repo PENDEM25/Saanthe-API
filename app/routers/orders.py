@@ -42,3 +42,23 @@ def pay_for_order(
     except payment_service.OrderNotPayableError as e:
         raise HTTPException(status_code=409, detail=str(e))
 
+
+
+@router.patch("/orders/{order_id}/cancel", response_model=OrderResponse)
+def cancel_order(
+    order_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        order = order_service.cancel_order(db, order_id, current_user.id)
+        return order
+    except order_service.OrderNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except order_service.OrderNotOwnedError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except order_service.OrderNotCancellableError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+

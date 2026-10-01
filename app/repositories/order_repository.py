@@ -32,3 +32,14 @@ def get_order_by_id(db: Session, order_id: int):
 
 def update_order_status(db: Session, order: Order, new_status: str):
     order.status = new_status
+
+def get_order_items(db: Session, order_id: int):
+    return db.query(OrderItem).filter(OrderItem.order_id == order_id).all()
+
+
+def restore_product_stock(db: Session, product_id: int, quantity: int):
+    product = db.query(Product).filter(Product.id == product_id).with_for_update().first()
+    product.stock_quantity += quantity
+
+
+
