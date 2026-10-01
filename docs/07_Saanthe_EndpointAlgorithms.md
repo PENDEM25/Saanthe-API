@@ -381,6 +381,43 @@ This document is updated immediately after each endpoint is built, while the rea
 
 ---
 
+## ✅ `PATCH /orders/{order_id}/cancel`
+
+**Purpose:** Cancel a still-pending order, reversing its stock reservation (User Story US-7). First use of `PATCH` (a partial update) and the first endpoint to perform a true reverse-transaction.
+
+```
+1. Client sends: PATCH /orders/{order_id}/cancel
+   Header: Authorization: Bearer <token>
+        ↓
+2. ROUTER (app/routers/orders.py)
+   - current_user resolved via Depends(get_current_user)
+   - Calls: order_service.cancel_order(db, order_id, current_user.id)
+        ↓
+3. SERVICE (app/services/order_service.py)
+   - Fetches the order; IF missing → OrderNotFoundError (404)
+   - Ownership check: order.buyer_user_id != user_id → OrderNotOwnedError (403)
+   - STATE MACHINE CHECK: order.status != "PENDING" → OrderNotCancellableError (409)
+     (enforces the ONLY valid transition is PENDING → CANCELLED — a PAID order
+     cannot be cancelled this way)
+   - try block:
+       - Fetches all order_items for this order
+       - For EACH item: restores the product's stock_quantity (locked via
+         .with_for_update(), same race-condition protection as order creation)
+       - Updates order.status to "CANCELLED"
+       - db.commit() — stock restoration AND status change finalize together
+   - except → db.rollback(), re-raise
+        ↓
+4. Formatted via response_model=OrderResponse
+   - Returns HTTP 200 with the now-CANCELLED order
+```
+
+**Key design notes:**
+- **This is a genuine reverse-transaction** — the mirror image of order creation's stock decrement. Same atomicity and locking requirements apply in reverse: stock restoration and status update must succeed or fail together.
+- **State machine enforcement tested directly, both directions:** a `PENDING` order was successfully cancelled (confirmed `CANCELLED` status, confirmed stock restored from 3 back to 5 — exact units ordered, no over- or under-restoration); a `PAID` order was correctly rejected with `409`, proving the state machine isn't just documented, it's enforced.
+- **First use of HTTP `PATCH`** — chosen deliberately over `PUT` or `POST`, since this is a partial update (just the status field), not a full resource replacement or creation.
+
+---
+
 
 ```
 ## [status] `METHOD /path`
