@@ -447,6 +447,36 @@ This document is updated immediately after each endpoint is built, while the rea
 
 ---
 
+## ✅ `GET /payments`
+
+**Purpose:** Let a logged-in user view their own payment history (User Story US-9). First query requiring a real SQL `JOIN` across two tables.
+
+```
+1. Client sends: GET /payments
+   Header: Authorization: Bearer <token>
+        ↓
+2. ROUTER (app/routers/orders.py)
+   - current_user resolved via Depends(get_current_user)
+   - Calls: payment_service.get_my_payments(db, current_user.id)
+        ↓
+3. SERVICE — thin pass-through
+   - Calls: payment_repository.get_payments_by_user_id(db, user_id)
+        ↓
+4. REPOSITORY — first use of .join()
+   - db.query(Payment).join(Order).filter(Order.buyer_user_id == user_id).all()
+   - payments has NO user_id column of its own — only order_id. The join crosses
+     through orders (which has buyer_user_id) to correctly scope results to this user
+        ↓
+5. Formatted via response_model=list[PaymentResponse]
+   - Returns HTTP 200 with the user's own payment list
+```
+
+**Key design notes:**
+- **First real multi-table query** — every prior query touched exactly one table. This one genuinely needs the relational structure (payments → orders → users) to answer "which payments belong to this user" correctly, since that fact isn't directly stored on the `payments` table itself.
+- **Tested directly:** correctly returned the one real successful payment on record, proving the join correctly traced ownership through the intermediate `orders` table.
+
+---
+
 
 ```
 ## [status] `METHOD /path`

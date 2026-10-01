@@ -67,3 +67,11 @@ def get_my_orders(
     db: Session = Depends(get_db),
 ):
     return order_service.get_my_orders(db, current_user.id)
+
+
+@router.get("/payments", response_model=list[PaymentResponse])
+def get_my_payments(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return payment_service.get_my_payments(db, current_user.id)

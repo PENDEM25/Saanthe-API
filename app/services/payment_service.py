@@ -46,3 +46,5 @@ def process_payment(db: Session, order_id: int, user_id: int):
         db.rollback()
         raise
 
+def get_my_payments(db: Session, user_id: int):
+    return payment_repository.get_payments_by_user_id(db, user_id)
