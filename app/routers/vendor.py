@@ -9,7 +9,7 @@ from app.schemas.product import ProductCreateRequest, ProductResponse
 from app.services import order_service, payment_service
 from app.schemas.vendor_order import VendorOrderItemResponse
 from app.schemas.payment import PaymentResponse
-
+from app.schemas.product import ProductUpdateRequest
 
 
 router = APIRouter()
@@ -68,3 +68,23 @@ def get_vendor_payments(
         raise HTTPException(status_code=403, detail=str(e))
 
 
+
+@router.put("/vendor/products/{product_id}", response_model=ProductResponse)
+def update_product(
+    product_id: int,
+    request: ProductUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        updated_product = product_service.update_product(
+            db, current_user.id, product_id,
+            request.name, request.description, request.price, request.stock_quantity
+        )
+        return updated_product
+    except product_service.VendorProfileRequiredError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except product_service.ProductNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except product_service.ProductNotOwnedError as e:
+        raise HTTPException(status_code=403, detail=str(e))

@@ -547,6 +547,44 @@ This document is updated immediately after each endpoint is built, while the rea
 
 ---
 
+## ✅ `PUT /vendor/products/{product_id}`
+
+**Purpose:** Let a vendor update their own product's fields (User Story US-11). First genuine partial update, and first "specific resource ownership" check (not just "do you have a vendor profile," but "does THIS specific product belong to you").
+
+```
+1. Client sends: PUT /vendor/products/{product_id}
+   Header: Authorization: Bearer <token>
+   Body: {"price": 75.00}  (any subset of updatable fields, all optional)
+        ↓
+2. ROUTER (app/routers/vendor.py)
+   - current_user resolved via Depends(get_current_user)
+   - Body validated against ProductUpdateRequest (every field optional, default None)
+   - Calls: product_service.update_product(db, current_user.id, product_id, ...)
+        ↓
+3. SERVICE (app/services/product_service.py)
+   - Looks up the user's vendor_profile; IF none → VendorProfileRequiredError (403)
+   - Fetches the product by ID; IF missing → ProductNotFoundError (404)
+   - OWNERSHIP CHECK ON THE SPECIFIC RESOURCE:
+     product.vendor_profile_id != vendor_profile.id → ProductNotOwnedError (403)
+     (a vendor having SOME profile isn't enough — this product must be THEIRS specifically)
+   - Calls: product_repository.update_product(db, product, name, description, price, stock_quantity)
+        ↓
+4. REPOSITORY — genuine partial update
+   - Each field only updated `if field is not None` — fields left out of the
+     request body are left completely untouched on the existing row
+   - Single db.commit() / db.refresh(), returns the updated product
+        ↓
+5. Formatted via response_model=ProductResponse
+   - Returns HTTP 200 with the full, updated product
+```
+
+**Key design notes:**
+- **Two-layer authorization, worth distinguishing clearly:** "do you have a vendor profile at all" (checked in `create_product`, `get_vendor_order_items`) vs. "does this SPECIFIC resource belong to YOUR vendor profile" (new here, and will repeat for `DELETE /vendor/products/{id}` and `PATCH /vendor/orders/{id}/status`). The first is a capability check; the second is a per-resource ownership check — both can apply to the same endpoint, in sequence.
+- **Partial update semantics implemented at the Repository, not the Schema** — the Schema just allows `None` as valid input; the Repository is what decides "a `None` value means leave this field alone," which is the actual mechanic that makes `PUT` here behave as a partial update rather than a full overwrite.
+- **Tested directly:** updated only `price` (90.00 → 75.00); confirmed `name`, `description`, and `stock_quantity` remained completely unchanged in the response — proof the partial-update logic works, not just that *a* field changed.
+
+---
+
 
 ```
 ## [status] `METHOD /path`

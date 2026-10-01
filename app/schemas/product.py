@@ -19,3 +19,13 @@ class ProductCreateRequest(BaseModel):
     description: str | None = None
     price: Decimal
     stock_quantity: int = 0
+
+
+class ProductUpdateRequest(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    price: Decimal | None = None
+    stock_quantity: int | None = None
+
+
+
