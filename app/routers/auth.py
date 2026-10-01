@@ -34,3 +34,7 @@ def login(request: UserLoginRequest, db: Session = Depends(get_db)):
 def get_my_profile(current_user: User = Depends(get_current_user)):
     return current_user
 
+
+@router.post("/auth/logout")
+def logout(current_user: User = Depends(get_current_user)):
+    return {"message": "Logged out successfully. Please discard your access token."}

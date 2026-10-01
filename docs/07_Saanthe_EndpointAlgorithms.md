@@ -701,11 +701,36 @@ This document is updated immediately after each endpoint is built, while the rea
 
 ---
 
+## ✅ `POST /auth/logout`
+
+**Purpose:** Signal logout, with an honest implementation given JWT's stateless nature.
+
+```
+1. Client sends: POST /auth/logout
+   Header: Authorization: Bearer <token>
+        ↓
+2. ROUTER (app/routers/auth.py)
+   - current_user resolved via Depends(get_current_user) — requires a genuinely
+     valid token to call this at all
+   - Returns a simple confirmation message — no database interaction at all
+        ↓
+3. Client receives: {"message": "Logged out successfully. Please discard your access token."}
+   The client is expected to discard the token itself; the server does not
+   maintain any session state to invalidate
+```
+
+**Key design notes:**
+- **Deliberately does NOT implement a token blocklist** — a real fix for true server-side invalidation, but genuinely more complexity than warranted for this stage. The honest, documented trade-off (flagged since the original Security Design doc): a JWT remains technically valid until its natural expiry (60 minutes), even after "logout."
+- **This is a legitimate, real-world pattern**, not a shortcut unique to this project — many production APIs using stateless JWTs rely on short expiry windows as the actual security boundary, rather than building blocklist infrastructure for every logout call.
+- **Requiring `Depends(get_current_user)` to even reach this endpoint** ensures you can't "log out" without a genuinely valid token in the first place — a small but meaningful correctness detail.
+
+---
+
 ## 🎉 Milestone: All 19 Originally Planned Endpoints Complete
 
 Every endpoint in the API Contract (Part 3 of the Technical Design Doc) now exists, is wired end-to-end through Router → Service → Repository → Database, and has been tested with real requests — including deliberate failure-path testing (invalid transitions, insufficient stock, duplicate payments, unauthorized access) wherever relevant. Plus one bonus endpoint beyond the original scope: `GET /health`.
 
-**What's left on the broader roadmap:** `POST /auth/logout` (deferred — stateless JWT has no server-side session to invalidate, noted in the original Security Design as a known trade-off), then v0.9 (automated pytest test suite) and v1.0 (Docker, CI/CD, cloud deployment).
+**What's next on the broader roadmap:** v0.9 (automated pytest test suite, converting all this manual `curl` testing into a permanent, repeatable suite), then v1.0 (Docker, environment variables — including finally moving `SECRET_KEY` out of hardcoded source — CI/CD, cloud deployment).
 
 ---
 
