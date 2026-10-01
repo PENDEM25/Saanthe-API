@@ -297,51 +297,87 @@ This document is updated immediately after each endpoint is built, while the rea
 
 ---
 
-## 🔒 Firm Requirement for `POST /orders` (Not Yet Built)
+## ✅ `POST /orders`
 
+**Purpose:** Create a multi-item order with server-side price calculation and atomic stock reservation (User Story US-6). First endpoint requiring a true multi-step database transaction — breaks the usual per-function-commit pattern deliberately.
 
+```
+1. Client sends: POST /orders
+   Header: Authorization: Bearer <token>
+   Body: {"items": [{"product_id": 1, "quantity": 1}, ...]}
+        ↓
+2. ROUTER (app/routers/orders.py)
+   - current_user resolved via Depends(get_current_user)
+   - Body validated against OrderCreateRequest (quantity > 0, at least 1 item)
+   - Calls: order_service.create_order(db, current_user.id, request.items)
+        ↓
+3. SERVICE (app/services/order_service.py) — the orchestrator, inside one try block
+   - For EACH item:
+       - order_repository.get_product_for_update() — locks the row (.with_for_update())
+       - Checks product exists, is active, and has enough stock
+       - IF any check fails → raises ProductNotFoundError or InsufficientStockError immediately
+       - Decrements stock IN MEMORY (not committed yet), accumulates running total
+   - Only after ALL items pass: order_repository.create_order() — stages the order (flush, no commit)
+   - Then creates each order_item — stages them too (no commit)
+   - db.commit() — ONE commit, finalizing order + all items + all stock decrements together
+   - On ANY exception anywhere above → db.rollback(), re-raise — nothing partial survives
+        ↓
+4. REPOSITORY — functions use db.flush(), never db.commit() — the Service alone decides
+   when to finalize
+        ↓
+5. Formatted via response_model=OrderResponse
+   - Returns HTTP 201 Created, status: "PENDING"
 
-Order creation MUST be wrapped in a single atomic database transaction. Creating the `order` row, creating the `order_item` rows, and decrementing `products.stock_quantity` must either **all succeed together, or all be rolled back together** — never left partially applied.
-
-**Why this matters, concretely:** without atomicity, a mid-request failure (e.g., discovering insufficient stock on the second item in a multi-item order, or a server crash) could leave a real order in the database with missing items, or stock decremented for an order that was never actually valid — a silent data-integrity bug.
-
-**Expected implementation shape (SQLAlchemy):**
-```python
-try:
-    order = Order(...)
-    db.add(order)
-    db.flush()  # get order.id without committing yet
-
-    for item in items:
-        product = db.query(Product).filter(Product.id == item.product_id).first()
-        if product.stock_quantity < item.quantity:
-            raise InsufficientStockError(...)
-        product.stock_quantity -= item.quantity
-        db.add(OrderItem(order_id=order.id, product_id=product.id, ...))
-
-    db.commit()
-except Exception:
-    db.rollback()
-    raise
+   ALTERNATE PATHS:
+   - Product missing/inactive → 404
+   - Insufficient stock → 409, and the entire attempt rolls back (confirmed: a failed
+     second order attempt left stock at exactly 0, not negative, and created no phantom order)
 ```
 
-This same atomicity requirement also applies later to `POST /orders/{id}/pay` (payment success + order status update must be atomic — already flagged conceptually in the Technical Design Doc's Security section).
-
-**Additional firm requirement — race condition protection:** the stock check inside this same transaction must use row-level locking (`.with_for_update()` in SQLAlchemy) when reading a product's `stock_quantity`, to prevent two concurrent orders from both reading stale stock and both succeeding when only one item remains. This is not a separate feature — it's a refinement of the same stock-check line already required above.
+**Key design notes:**
+- **Deliberate break from the per-function-commit pattern** used in every prior endpoint — Repository functions here only stage changes (`add`/`flush`); the Service is the single place that calls `db.commit()` or `db.rollback()`. This is the correct, necessary shape for any multi-step write, not a one-off exception.
+- **Row-level locking (`.with_for_update()`)** implemented exactly as flagged — prevents two concurrent requests from both reading stale stock and both succeeding on the last unit of inventory.
+- **Price taken from the live `product.price` at the moment of order, stored separately in `unit_price_at_purchase`** — matches the original ERD design decision (price history must stay frozen even if the vendor changes it later).
+- **Tested directly:** successful order correctly decremented stock (1 → 0); a second attempt on the now-empty stock was cleanly rejected with `409`, with no partial data left behind.
 
 ---
 
-## 🔒 Firm Requirement for `POST /orders/{id}/pay` (Not Yet Built)
+## ✅ `POST /orders/{order_id}/pay`
 
-**Idempotency requirement:** before processing a payment attempt, check whether a `SUCCESS` payment already exists for that order. If one does, return that existing result rather than processing a new charge. This directly implements Business Rule #9 ("a payment cannot be processed twice") and protects against duplicate charges caused by client-side retries (e.g., a timed-out request that the frontend automatically resends).
+**Purpose:** Process a simulated payment for an existing order (User Story US-8). Implements idempotency, ownership verification, and atomic order-status update together.
 
-```python
-existing = db.query(Payment).filter(
-    Payment.order_id == order_id, Payment.status == "SUCCESS"
-).first()
-if existing:
-    return existing  # don't process again
 ```
+1. Client sends: POST /orders/{order_id}/pay
+   Header: Authorization: Bearer <token>
+        ↓
+2. ROUTER (app/routers/orders.py)
+   - current_user resolved via Depends(get_current_user)
+   - Calls: payment_service.process_payment(db, order_id, current_user.id)
+        ↓
+3. SERVICE (app/services/payment_service.py)
+   - Fetches the order; IF missing → raises OrderNotFoundError (404)
+   - Ownership check: order.buyer_user_id != user_id → raises OrderNotOwnedError (403)
+     (prevents paying for someone ELSE's order, even with a guessed valid order_id)
+   - IDEMPOTENCY CHECK: looks for an existing SUCCESS payment on this order
+     IF found → returns it immediately, no new charge attempted, function exits here
+   - IF order.status is not "PENDING" (e.g., already PAID, or CANCELLED) → raises
+     OrderNotPayableError (409)
+   - Simulated processor: random.choice() → ~75% success rate
+   - try block:
+       - IF success → creates a SUCCESS payment row AND updates order.status to "PAID"
+       - IF failure → creates a FAILED payment row only (order stays PENDING, retryable)
+       - db.commit() — both the payment record and the status change finalize TOGETHER
+   - except → db.rollback(), re-raise
+        ↓
+4. Formatted via response_model=PaymentResponse
+   - Returns HTTP 200 with the payment result (SUCCESS or FAILED)
+```
+
+**Key design notes:**
+- **Idempotency proven directly, not just implemented:** called this endpoint twice in a row after a successful payment — both calls returned the exact same payment `id`, confirming no duplicate charge was processed.
+- **Atomicity confirmed:** payment creation and order status update are committed in the same transaction — a crash between them is structurally impossible, not just unlikely.
+- **Three distinct, correctly-chosen status codes for three distinct failure reasons:** `404` (order doesn't exist), `403` (exists, but isn't yours), `409` (exists, is yours, but isn't in a payable state) — a clean demonstration of choosing HTTP status codes by actual meaning, not arbitrarily.
+- **The simulated processor's ~75% success rate was deliberately chosen** so both outcomes could be observed directly during testing, rather than assuming the logic works from reading the code alone.
 
 ---
 
