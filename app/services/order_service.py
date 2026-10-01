@@ -78,4 +78,7 @@ def cancel_order(db: Session, order_id: int, user_id: int):
 
 
 
+def get_my_orders(db: Session, user_id: int):
+    return order_repository.get_orders_by_user_id(db, user_id)
+
 

@@ -418,6 +418,35 @@ This document is updated immediately after each endpoint is built, while the rea
 
 ---
 
+## ✅ `GET /orders`
+
+**Purpose:** Let a logged-in user view their own order history (User Story US-9). Simple, ownership-scoped read — same pattern as `GET /users/me`, applied to a list instead of a single record.
+
+```
+1. Client sends: GET /orders
+   Header: Authorization: Bearer <token>
+        ↓
+2. ROUTER (app/routers/orders.py)
+   - current_user resolved via Depends(get_current_user)
+   - Calls: order_service.get_my_orders(db, current_user.id)
+        ↓
+3. SERVICE — thin pass-through, same shape as get_all_active_products
+   - Calls: order_repository.get_orders_by_user_id(db, user_id)
+        ↓
+4. REPOSITORY
+   - db.query(Order).filter(Order.buyer_user_id == user_id).all()
+   - Returns only orders belonging to this specific user — never another user's
+        ↓
+5. Formatted via response_model=list[OrderResponse]
+   - Returns HTTP 200 with the user's own order list
+```
+
+**Key design notes:**
+- **Ownership scoping happens at the query level**, not via a post-fetch filter — `WHERE buyer_user_id = user_id` is part of the SQL itself, meaning there's no risk of accidentally fetching-then-forgetting-to-filter another user's data.
+- **Tested directly:** correctly returned both existing orders (one `PAID`, one `CANCELLED`) for the authenticated user, confirming historical status changes persist and display correctly through a simple read.
+
+---
+
 
 ```
 ## [status] `METHOD /path`

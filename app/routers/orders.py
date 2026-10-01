@@ -61,4 +61,9 @@ def cancel_order(
         raise HTTPException(status_code=409, detail=str(e))
 
 
-
+@router.get("/orders", response_model=list[OrderResponse])
+def get_my_orders(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return order_service.get_my_orders(db, current_user.id)

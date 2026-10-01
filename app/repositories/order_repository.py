@@ -41,5 +41,8 @@ def restore_product_stock(db: Session, product_id: int, quantity: int):
     product = db.query(Product).filter(Product.id == product_id).with_for_update().first()
     product.stock_quantity += quantity
 
+def get_orders_by_user_id(db: Session, user_id: int):
+    return db.query(Order).filter(Order.buyer_user_id == user_id).all()
+
 
 
