@@ -10,7 +10,7 @@ from app.services import order_service, payment_service
 from app.schemas.vendor_order import VendorOrderItemResponse
 from app.schemas.payment import PaymentResponse
 from app.schemas.product import ProductUpdateRequest
-
+from app.schemas.order import OrderStatusUpdateRequest, OrderResponse
 
 router = APIRouter()
 
@@ -107,3 +107,21 @@ def delete_product(
         raise HTTPException(status_code=403, detail=str(e))
 
 
+@router.patch("/vendor/orders/{order_id}/status", response_model=OrderResponse)
+def update_order_status(
+    order_id: int,
+    request: OrderStatusUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        updated_order = order_service.update_order_status_for_vendor(
+            db, current_user.id, order_id, request.status
+        )
+        return updated_order
+    except order_service.VendorProfileRequiredError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except order_service.OrderItemNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except order_service.InvalidStatusTransitionError as e:
+        raise HTTPException(status_code=409, detail=str(e))

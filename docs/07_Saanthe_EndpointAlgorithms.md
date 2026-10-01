@@ -619,6 +619,45 @@ This document is updated immediately after each endpoint is built, while the rea
 
 ---
 
+## ✅ `PATCH /vendor/orders/{order_id}/status`
+
+**Purpose:** Let a vendor advance an order's status (PAID → SHIPPED), completing the order state machine (User Story US-13). First endpoint to validate a transition against an explicit allowed-list rather than a single fixed condition.
+
+```
+1. Client sends: PATCH /vendor/orders/{order_id}/status
+   Header: Authorization: Bearer <token>
+   Body: {"status": "SHIPPED"}
+        ↓
+2. ROUTER (app/routers/vendor.py)
+   - current_user resolved via Depends(get_current_user)
+   - Calls: order_service.update_order_status_for_vendor(db, current_user.id, order_id, request.status)
+        ↓
+3. SERVICE (app/services/order_service.py)
+   - Vendor profile check → VendorProfileRequiredError (403) if none
+   - Fetches ALL order_items belonging to this vendor (reuses get_order_items_for_vendor,
+     the same function GET /vendor/orders already uses)
+   - Searches for one whose order_id matches the requested order
+     IF no match → OrderItemNotFoundError (404) — proves the vendor has a genuine
+     stake in this specific order, not just any order in the system
+   - Fetches the order, checks VALID_TRANSITIONS.get(order.status, []) —
+     a dictionary mapping each status to its only allowed next states
+     (currently just {"PAID": ["SHIPPED"]})
+   - IF requested status not in that allowed list → InvalidStatusTransitionError (409)
+   - IF valid → calls order_repository.update_order_status(db, order, new_status)
+     (the Repository itself performs NO validation — it only executes an
+     already-approved change; all judgment happens in the Service, before this call)
+        ↓
+4. Formatted via response_model=OrderResponse
+   - Returns HTTP 200 with the order's new status
+```
+
+**Key design notes:**
+- **Dictionary-based state machine, not if/elif chains** — `VALID_TRANSITIONS.get(current_status, [])` cleanly handles "dead-end" states (like `SHIPPED`, which isn't a key at all) by falling back to an empty list, meaning no further transition is ever valid from there — without writing an explicit rule saying so.
+- **Service decides, Repository executes — reinforced clearly here:** the Repository's `update_order_status` function has zero awareness that `PAID → SHIPPED` is valid or `SHIPPED → SHIPPED` isn't; it will set any status it's told to. All transition logic lives exclusively in the Service, and an invalid request never even reaches the Repository.
+- **Tested directly, both directions:** a valid `PAID → SHIPPED` transition succeeded; an immediate repeat attempt (`SHIPPED → SHIPPED`) was correctly rejected with `409` and the exact expected message, proving the dictionary fallback behavior works for real, not just in theory.
+
+---
+
 
 ```
 ## [status] `METHOD /path`

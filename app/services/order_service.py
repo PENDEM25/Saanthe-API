@@ -97,3 +97,41 @@ def get_vendor_order_items(db: Session, user_id: int):
     return order_repository.get_order_items_for_vendor(db, vendor_profile.id)
 
 
+class OrderItemNotFoundError(Exception):
+    pass
+
+
+class InvalidStatusTransitionError(Exception):
+    pass
+
+
+VALID_TRANSITIONS = {
+    "PAID": ["SHIPPED"],
+}
+
+
+def update_order_status_for_vendor(db: Session, user_id: int, order_id: int, new_status: str):
+    vendor_profile = vendor_repository.get_vendor_profile_by_user_id(db, user_id)
+    if not vendor_profile:
+        raise VendorProfileRequiredError("You must have a vendor profile to update order status")
+
+    order_items = order_repository.get_order_items_for_vendor(db, vendor_profile.id)
+    matching_item = next((item for item in order_items if item.order_id == order_id), None)
+    if not matching_item:
+        raise OrderItemNotFoundError("No item from your products found in this order")
+
+    order = order_repository.get_order_by_id(db, order_id)
+    allowed_next_statuses = VALID_TRANSITIONS.get(order.status, [])
+    if new_status not in allowed_next_statuses:
+        raise InvalidStatusTransitionError(
+            f"Cannot transition order from '{order.status}' to '{new_status}'"
+        )
+
+    order_repository.update_order_status(db, order, new_status)
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+
+

@@ -19,3 +19,6 @@ class OrderResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
+class OrderStatusUpdateRequest(BaseModel):
+    status: str
