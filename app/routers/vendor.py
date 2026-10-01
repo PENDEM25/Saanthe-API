@@ -6,9 +6,9 @@ from app.models.user import User
 from app.services import vendor_service, product_service
 from app.schemas.vendor import VendorProfileRequest, VendorProfileResponse
 from app.schemas.product import ProductCreateRequest, ProductResponse
-from app.services import order_service
+from app.services import order_service, payment_service
 from app.schemas.vendor_order import VendorOrderItemResponse
-
+from app.schemas.payment import PaymentResponse
 
 
 
@@ -54,6 +54,17 @@ def get_vendor_orders(
     try:
         return order_service.get_vendor_order_items(db, current_user.id)
     except order_service.VendorProfileRequiredError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+
+@router.get("/vendor/payments", response_model=list[PaymentResponse])
+def get_vendor_payments(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        return payment_service.get_vendor_payments(db, current_user.id)
+    except payment_service.VendorProfileRequiredError as e:
         raise HTTPException(status_code=403, detail=str(e))
 
 

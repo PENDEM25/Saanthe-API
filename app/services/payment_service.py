@@ -1,6 +1,8 @@
 import random
 from sqlalchemy.orm import Session
 from app.repositories import payment_repository, order_repository
+from app.repositories import vendor_repository
+
 
 
 class OrderNotFoundError(Exception):
@@ -48,3 +50,17 @@ def process_payment(db: Session, order_id: int, user_id: int):
 
 def get_my_payments(db: Session, user_id: int):
     return payment_repository.get_payments_by_user_id(db, user_id)
+
+class VendorProfileRequiredError(Exception):
+    pass
+
+
+def get_vendor_payments(db: Session, user_id: int):
+    vendor_profile = vendor_repository.get_vendor_profile_by_user_id(db, user_id)
+    if not vendor_profile:
+        raise VendorProfileRequiredError("You must have a vendor profile to view vendor payments")
+
+    return payment_repository.get_payments_for_vendor(db, vendor_profile.id)
+
+
+

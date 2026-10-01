@@ -1,7 +1,8 @@
 from sqlalchemy.orm import Session
 from app.models.payment import Payment
 from app.models.order import Order
-
+from app.models.order_item import OrderItem
+from app.models.product import Product
 
 
 def get_successful_payment_by_order_id(db: Session, order_id: int):
@@ -18,3 +19,15 @@ def create_payment(db: Session, order_id: int, status: str, amount):
 
 def get_payments_by_user_id(db: Session, user_id: int):
     return db.query(Payment).join(Order).filter(Order.buyer_user_id == user_id).all()
+def get_payments_for_vendor(db: Session, vendor_profile_id: int):
+    return (
+        db.query(Payment)
+        .join(Order, Payment.order_id == Order.id)
+        .join(OrderItem, OrderItem.order_id == Order.id)
+        .join(Product, OrderItem.product_id == Product.id)
+        .filter(Product.vendor_profile_id == vendor_profile_id)
+        .distinct()
+        .all()
+    )
+
+

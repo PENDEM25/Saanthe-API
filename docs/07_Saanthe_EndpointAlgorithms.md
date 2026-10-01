@@ -512,6 +512,41 @@ This document is updated immediately after each endpoint is built, while the rea
 
 ---
 
+## ✅ `GET /vendor/payments`
+
+**Purpose:** Let a vendor see payments tied to orders containing their products — revenue history (User Story US-12). Deepest join yet — four tables.
+
+```
+1. Client sends: GET /vendor/payments
+   Header: Authorization: Bearer <token>
+        ↓
+2. ROUTER (app/routers/vendor.py)
+   - current_user resolved via Depends(get_current_user)
+   - Calls: payment_service.get_vendor_payments(db, current_user.id)
+        ↓
+3. SERVICE (app/services/payment_service.py)
+   - Looks up the user's vendor_profile; IF none → VendorProfileRequiredError (403)
+   - Calls: payment_repository.get_payments_for_vendor(db, vendor_profile.id)
+        ↓
+4. REPOSITORY — four-table join
+   - Chain: payments → orders → order_items → products → vendor_profiles
+   - Explicit join conditions used throughout (Payment.order_id == Order.id, etc.)
+     rather than relying on SQLAlchemy's auto-inference, since multiple joins
+     are chained together
+   - .distinct() applied — without it, a payment would appear once PER matching
+     item if an order contained more than one of this vendor's products
+        ↓
+5. Formatted via response_model=list[PaymentResponse]
+   - Returns HTTP 200 with the vendor's own revenue-relevant payments
+```
+
+**Key design notes:**
+- **`.distinct()` is not optional here** — this is the first join deep enough that duplicate rows become a real, likely risk (multiple matching order_items per payment), not just a theoretical edge case.
+- **Important table-ownership reminder, worth re-noting for future sessions:** the `id` field on a `PaymentResponse` is the Payment row's OWN Primary Key — unrelated to `users.id` or any other table's `id`. There is no `user_id` on `payments` at all; tracing "which user" requires following `order_id → orders.buyer_user_id`. This came up as a point of confusion during testing and is worth revisiting with fresh examples in a future session if it resurfaces.
+- **Tested directly:** correctly returned the one real successful payment, appearing exactly once despite the multi-table join.
+
+---
+
 
 ```
 ## [status] `METHOD /path`
