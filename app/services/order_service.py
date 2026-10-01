@@ -1,5 +1,7 @@
 from sqlalchemy.orm import Session
 from app.repositories import order_repository
+from app.repositories import vendor_repository
+
 
 
 class InsufficientStockError(Exception):
@@ -80,5 +82,18 @@ def cancel_order(db: Session, order_id: int, user_id: int):
 
 def get_my_orders(db: Session, user_id: int):
     return order_repository.get_orders_by_user_id(db, user_id)
+
+
+
+class VendorProfileRequiredError(Exception):
+    pass
+
+
+def get_vendor_order_items(db: Session, user_id: int):
+    vendor_profile = vendor_repository.get_vendor_profile_by_user_id(db, user_id)
+    if not vendor_profile:
+        raise VendorProfileRequiredError("You must have a vendor profile to view vendor orders")
+
+    return order_repository.get_order_items_for_vendor(db, vendor_profile.id)
 
 

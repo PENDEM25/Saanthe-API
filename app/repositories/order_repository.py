@@ -46,3 +46,13 @@ def get_orders_by_user_id(db: Session, user_id: int):
 
 
 
+def get_order_items_for_vendor(db: Session, vendor_profile_id: int):
+    return (
+        db.query(OrderItem)
+        .join(Product)
+        .filter(Product.vendor_profile_id == vendor_profile_id)
+        .all()
+    )
+
+
+

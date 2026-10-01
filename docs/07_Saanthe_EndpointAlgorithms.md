@@ -477,6 +477,41 @@ This document is updated immediately after each endpoint is built, while the rea
 
 ---
 
+## ✅ `GET /vendor/orders`
+
+**Purpose:** Let a vendor-profile holder see which order_items contain their own products (User Story US-12). First query spanning THREE tables, and the first endpoint distinguishing "orders I bought" from "orders containing things I sold."
+
+```
+1. Client sends: GET /vendor/orders
+   Header: Authorization: Bearer <token>
+        ↓
+2. ROUTER (app/routers/vendor.py)
+   - current_user resolved via Depends(get_current_user)
+   - Calls: order_service.get_vendor_order_items(db, current_user.id)
+        ↓
+3. SERVICE (app/services/order_service.py)
+   - Looks up the user's own vendor_profile (same "translate user_id → vendor_profile_id"
+     step as POST /vendor/products)
+   - IF no vendor profile → raises VendorProfileRequiredError (403)
+   - Calls: order_repository.get_order_items_for_vendor(db, vendor_profile.id)
+        ↓
+4. REPOSITORY — three-table join
+   - db.query(OrderItem).join(Product).filter(Product.vendor_profile_id == vendor_profile_id).all()
+   - Traces: order_items → products → vendor_profiles, returning only items
+     where the PRODUCT belongs to this vendor — never items from other vendors,
+     even if they're in the same order
+        ↓
+5. Formatted via response_model=list[VendorOrderItemResponse]
+   - Returns HTTP 200 with the vendor's own sold-item records
+```
+
+**Key design notes:**
+- **Deliberately returns order_items, not whole orders** — a single order can contain products from multiple different vendors, so a vendor should only ever see the line items that are actually theirs, never a neighboring vendor's items bundled in the same order.
+- **Reused exception class name (`VendorProfileRequiredError`) exists independently in both `product_service.py` and `order_service.py`** — confirmed this causes no conflict, since Python scopes classes to their own module; each file's version is distinct.
+- **Tested directly:** correctly returned both order_items tied to the test product (one from a paid order, one from a cancelled order) — confirming the join correctly surfaces sales history regardless of the parent order's current status.
+
+---
+
 
 ```
 ## [status] `METHOD /path`

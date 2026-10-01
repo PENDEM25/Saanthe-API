@@ -6,6 +6,11 @@ from app.models.user import User
 from app.services import vendor_service, product_service
 from app.schemas.vendor import VendorProfileRequest, VendorProfileResponse
 from app.schemas.product import ProductCreateRequest, ProductResponse
+from app.services import order_service
+from app.schemas.vendor_order import VendorOrderItemResponse
+
+
+
 
 router = APIRouter()
 
@@ -39,3 +44,16 @@ def create_product(
         return new_product
     except product_service.VendorProfileRequiredError as e:
         raise HTTPException(status_code=403, detail=str(e))
+
+
+@router.get("/vendor/orders", response_model=list[VendorOrderItemResponse])
+def get_vendor_orders(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        return order_service.get_vendor_order_items(db, current_user.id)
+    except order_service.VendorProfileRequiredError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+
