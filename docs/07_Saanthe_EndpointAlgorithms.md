@@ -658,6 +658,57 @@ This document is updated immediately after each endpoint is built, while the rea
 
 ---
 
+## ✅ `GET /vendor/dashboard`
+
+**Purpose:** Aggregate business stats for a vendor — total orders, successful/failed payments, total revenue (User Story US-14). **The 19th and final endpoint of the original API Contract.** First use of SQL aggregation functions (`COUNT`, `SUM`) rather than fetching rows and counting in Python.
+
+```
+1. Client sends: GET /vendor/dashboard
+   Header: Authorization: Bearer <token>
+        ↓
+2. ROUTER (app/routers/vendor.py)
+   - current_user resolved via Depends(get_current_user)
+   - Calls: dashboard_service.get_vendor_dashboard(db, current_user.id)
+        ↓
+3. SERVICE (app/services/dashboard_service.py) — the only Service combining
+   results from TWO different Repository files into one response
+   - Vendor profile check → VendorProfileRequiredError (403) if none
+   - Calls FOUR separate aggregate queries:
+       - order_repository.count_orders_for_vendor()
+       - payment_repository.count_payments_by_status_for_vendor(..., "SUCCESS")
+       - payment_repository.count_payments_by_status_for_vendor(..., "FAILED")
+       - payment_repository.get_total_revenue_for_vendor()
+   - Assembles results into a plain Python dict (not an ORM object)
+        ↓
+4. REPOSITORY — real SQL aggregation, computed by PostgreSQL itself
+   - func.count(func.distinct(...)) — SQL COUNT, with DISTINCT to avoid
+     double-counting across the same multi-table joins used earlier
+   - func.sum(Payment.amount) — SQL SUM, filtered to SUCCESS payments only
+   - .scalar() — extracts the single raw number from each query, not a row object
+   - get_total_revenue_for_vendor() returns `total or 0`, since SUM() returns
+     NULL/None when there are zero matching rows — converted to a clean 0
+        ↓
+5. Formatted via response_model=VendorDashboardResponse
+   - FastAPI/Pydantic matches dict keys directly to schema field names
+   - Returns HTTP 200 with all four stats
+```
+
+**Key design notes:**
+- **Aggregation computed in the database, not in application code** — a deliberate choice: letting PostgreSQL do `COUNT`/`SUM` is both correct practice (databases are built for this) and far more efficient than fetching every row into Python and counting manually, which would not scale as data grows.
+- **Dict-based response, not an ORM object** — this Service returns a plain dictionary assembled from four independent numbers; no single database row corresponds to "a dashboard." Pydantic converts it to the response Schema purely by matching key names, no `from_attributes = True` needed here.
+- **`.distinct()` reused for a new reason** — same tool as `GET /vendor/payments`, but here specifically preventing an order with multiple matching items from being counted more than once in `total_orders`.
+- **Tested directly:** returned numbers matched real, known test history exactly (`total_orders: 2`, `successful_payments: 1`, `failed_payments: 0`, `total_revenue: "90.00"`) — not just plausible-looking output, but independently verifiable against the actual actions taken earlier in this same session.
+
+---
+
+## 🎉 Milestone: All 19 Originally Planned Endpoints Complete
+
+Every endpoint in the API Contract (Part 3 of the Technical Design Doc) now exists, is wired end-to-end through Router → Service → Repository → Database, and has been tested with real requests — including deliberate failure-path testing (invalid transitions, insufficient stock, duplicate payments, unauthorized access) wherever relevant. Plus one bonus endpoint beyond the original scope: `GET /health`.
+
+**What's left on the broader roadmap:** `POST /auth/logout` (deferred — stateless JWT has no server-side session to invalidate, noted in the original Security Design as a known trade-off), then v0.9 (automated pytest test suite) and v1.0 (Docker, CI/CD, cloud deployment).
+
+---
+
 
 ```
 ## [status] `METHOD /path`

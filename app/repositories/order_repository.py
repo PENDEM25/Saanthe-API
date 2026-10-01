@@ -1,4 +1,6 @@
+
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from app.models.product import Product
 from app.models.order import Order
 from app.models.order_item import OrderItem
@@ -53,6 +55,17 @@ def get_order_items_for_vendor(db: Session, vendor_profile_id: int):
         .filter(Product.vendor_profile_id == vendor_profile_id)
         .all()
     )
+
+
+
+def count_orders_for_vendor(db: Session, vendor_profile_id: int):
+    return (
+        db.query(func.count(func.distinct(OrderItem.order_id)))
+        .join(Product)
+        .filter(Product.vendor_profile_id == vendor_profile_id)
+        .scalar()
+    )
+
 
 
 

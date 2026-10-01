@@ -1,4 +1,6 @@
+
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from app.models.payment import Payment
 from app.models.order import Order
 from app.models.order_item import OrderItem
@@ -29,5 +31,30 @@ def get_payments_for_vendor(db: Session, vendor_profile_id: int):
         .distinct()
         .all()
     )
+
+
+
+def count_payments_by_status_for_vendor(db: Session, vendor_profile_id: int, status: str):
+    return (
+        db.query(func.count(func.distinct(Payment.id)))
+        .join(Order, Payment.order_id == Order.id)
+        .join(OrderItem, OrderItem.order_id == Order.id)
+        .join(Product, OrderItem.product_id == Product.id)
+        .filter(Product.vendor_profile_id == vendor_profile_id, Payment.status == status)
+        .scalar()
+    )
+
+
+def get_total_revenue_for_vendor(db: Session, vendor_profile_id: int):
+    total = (
+        db.query(func.sum(Payment.amount))
+        .join(Order, Payment.order_id == Order.id)
+        .join(OrderItem, OrderItem.order_id == Order.id)
+        .join(Product, OrderItem.product_id == Product.id)
+        .filter(Product.vendor_profile_id == vendor_profile_id, Payment.status == "SUCCESS")
+        .scalar()
+    )
+    return total or 0
+
 
 

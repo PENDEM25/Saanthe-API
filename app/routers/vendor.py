@@ -11,6 +11,11 @@ from app.schemas.vendor_order import VendorOrderItemResponse
 from app.schemas.payment import PaymentResponse
 from app.schemas.product import ProductUpdateRequest
 from app.schemas.order import OrderStatusUpdateRequest, OrderResponse
+from app.services import dashboard_service
+from app.schemas.dashboard import VendorDashboardResponse
+
+
+
 
 router = APIRouter()
 
@@ -125,3 +130,18 @@ def update_order_status(
         raise HTTPException(status_code=404, detail=str(e))
     except order_service.InvalidStatusTransitionError as e:
         raise HTTPException(status_code=409, detail=str(e))
+
+
+
+@router.get("/vendor/dashboard", response_model=VendorDashboardResponse)
+def get_vendor_dashboard(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        return dashboard_service.get_vendor_dashboard(db, current_user.id)
+    except dashboard_service.VendorProfileRequiredError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+
+
