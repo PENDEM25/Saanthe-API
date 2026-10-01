@@ -256,6 +256,47 @@ This document is updated immediately after each endpoint is built, while the rea
 
 ---
 
+## ✅ `POST /vendor/products`
+
+**Purpose:** Let a vendor-profile holder list a new product for sale (User Story US-11). Introduces a new authorization tier: "logged in" is not enough — the user must specifically hold a Vendor Profile.
+
+```
+1. Client sends: POST /vendor/products
+   Header: Authorization: Bearer <token>
+   Body: {"name": "...", "description": "...", "price": 90.00, "stock_quantity": 1}
+        ↓
+2. ROUTER (app/routers/vendor.py)
+   - current_user: User = Depends(get_current_user) — identity resolved and verified
+   - FastAPI validates body against ProductCreateRequest
+   - Calls: product_service.create_product(db, current_user.id, name, description, price, stock_quantity)
+        ↓
+3. SERVICE (app/services/product_service.py)
+   - Calls vendor_repository.get_vendor_profile_by_user_id(db, user_id)
+   - IF no vendor profile exists → raises VendorProfileRequiredError, stops immediately
+   - IF one exists → translates user_id into vendor_profile.id (the actual Foreign Key
+     Product needs), calls product_repository.create_product(db, vendor_profile.id, ...)
+        ↓
+4. REPOSITORY (app/repositories/product_repository.py)
+   - Creates a new Product object, db.add() / db.commit() / db.refresh()
+   - Returns the saved object
+        ↓
+5. Formatted via response_model=ProductResponse
+   - Returns HTTP 201 Created
+
+   ALTERNATE PATH — no vendor profile:
+   Service raises VendorProfileRequiredError
+        ↓
+   ROUTER catches it, raises HTTPException(status_code=403, detail=str(e))
+```
+
+**Key design notes:**
+- **New status code: `403 Forbidden`**, distinct from `401 Unauthorized`. The user IS correctly authenticated (401 would mean "we don't know who you are") — they're simply not PERMITTED to do this specific action yet (no vendor profile). This 401-vs-403 distinction is a common interview question.
+- **The Service performs a translation step** that's easy to overlook: the Router only ever knows `current_user.id` (a `users.id`), but `Product` needs a `vendor_profile_id`. The Service looks up the correct `vendor_profile.id` before handing off to the Repository — the Repository never has to know this translation happened.
+- **Full loop tested and confirmed:** created a real product as an authenticated vendor, then confirmed it immediately appeared in the public, unauthenticated `GET /products` response — proving the core marketplace mechanic (list → browse) works end-to-end for the first time.
+- **Still deferred to later:** `stock_quantity` has no upper sanity bound, and there's no check yet preventing negative values beyond the database's own CHECK constraint (which would reject it, but with a raw error, not yet a clean validated rejection at the Schema level — worth a `Field(ge=0)` addition later if desired).
+
+---
+
 ## 🔒 Firm Requirement for `POST /orders` (Not Yet Built)
 
 

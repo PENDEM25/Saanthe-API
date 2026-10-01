@@ -13,3 +13,9 @@ class ProductResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
+class ProductCreateRequest(BaseModel):
+    name: str
+    description: str | None = None
+    price: Decimal
+    stock_quantity: int = 0
