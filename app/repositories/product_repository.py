@@ -41,3 +41,8 @@ def update_product(db: Session, product: Product, name: str | None, description:
 
 
 
+def deactivate_product(db: Session, product: Product):
+    product.is_active = False
+    db.commit()
+    db.refresh(product)
+    return product

@@ -585,6 +585,40 @@ This document is updated immediately after each endpoint is built, while the rea
 
 ---
 
+## ✅ `DELETE /vendor/products/{product_id}`
+
+**Purpose:** Let a vendor deactivate their own product (User Story US-11). Implements the soft-delete pattern planned since the original Charter — reuses `is_active`, never a real `DELETE FROM`.
+
+```
+1. Client sends: DELETE /vendor/products/{product_id}
+   Header: Authorization: Bearer <token>
+        ↓
+2. ROUTER (app/routers/vendor.py)
+   - current_user resolved via Depends(get_current_user)
+   - Calls: product_service.deactivate_product(db, current_user.id, product_id)
+        ↓
+3. SERVICE (app/services/product_service.py) — same two-layer authorization as PUT
+   - Vendor profile check → VendorProfileRequiredError (403) if none
+   - Product exists check → ProductNotFoundError (404) if missing
+   - Specific-resource ownership check → ProductNotOwnedError (403) if not theirs
+   - Calls: product_repository.deactivate_product(db, product)
+        ↓
+4. REPOSITORY
+   - product.is_active = False
+   - db.commit() / db.refresh()
+   - THE ROW IS NEVER REMOVED — only the flag changes
+        ↓
+5. Formatted via response_model=ProductResponse
+   - Returns HTTP 200 with the product, now showing is_active: false
+```
+
+**Key design notes:**
+- **This is the soft-delete decision made back in the original Charter (Business Rule #8), finally executed** — not new scope, just the planned implementation of `is_active` actually being triggered by a real endpoint for the first time.
+- **Why this matters concretely:** a hard `DELETE FROM products` would have broken every `order_item` still referencing this product's `id` (a real Foreign Key violation risk against historical orders). Soft delete keeps the row, and therefore every historical reference, fully valid forever.
+- **Tested directly, two-part proof:** (1) the DELETE response showed the product's full data intact with `is_active: false`, not an empty/removed result; (2) immediately after, `GET /products` returned `[]`, confirming the same `WHERE is_active = true` filter built months ago for public browsing correctly now excludes it — no changes to that endpoint were needed at all.
+
+---
+
 
 ```
 ## [status] `METHOD /path`

@@ -88,3 +88,22 @@ def update_product(
         raise HTTPException(status_code=404, detail=str(e))
     except product_service.ProductNotOwnedError as e:
         raise HTTPException(status_code=403, detail=str(e))
+
+
+@router.delete("/vendor/products/{product_id}", response_model=ProductResponse)
+def delete_product(
+    product_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        deactivated_product = product_service.deactivate_product(db, current_user.id, product_id)
+        return deactivated_product
+    except product_service.VendorProfileRequiredError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except product_service.ProductNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except product_service.ProductNotOwnedError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+
